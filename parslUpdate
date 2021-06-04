@@ -1,0 +1,15 @@
+#!/bin/bash
+## This is simply the command to update the currently installed parsl
+##   version within the currently activated conda environment
+echo "Updating parsl..."
+date
+updateparsl="pip install 'parsl[monitoring,workqueue] @ git+https://github.com/parsl/parsl@desc' --upgrade"
+echo $updateparsl
+eval $updateparsl
+##
+## And the following is needed to update the workQueue code (part of ndcctools)
+echo "Updating workQueue..."
+updatewq="conda install -c conda-forge ndcctools"
+echo $updatewq
+eval $updatewq
+echo Done.

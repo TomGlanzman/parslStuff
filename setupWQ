@@ -1,0 +1,7 @@
+## This script must be sourced
+
+## Make conda visible
+module load python/3.8-anaconda-2020.11
+
+## Activate the proper environment
+source activate parsl-202103-WQ
