@@ -1,5 +1,10 @@
-# wq3.py - a simple test of parsl's new workqueue executor
-#          This test uses SLURM batch to execute apps
+# wqTest.py - a simple test of parsl's new workqueue executor
+#             This test uses SLURM batch to execute apps
+
+
+####################################################################################
+###  MODULES
+####################################################################################
 
 import sys,os
 
@@ -26,6 +31,12 @@ from tabulate         import  tabulate
 import code
 
 
+####################################################################################
+###  GLOBALS
+####################################################################################
+
+thisDir = os.getcwd()
+
 
 ####################################################################################
 ###  RETRY HANDLER
@@ -36,41 +47,48 @@ def myRetryHandler(exception, taskRecord):
     # import the specific python exceptions of interest
     from parsl.executors.workqueue.errors import WorkQueueTaskFailure
     from parsl.app.errors import BashExitFailure
-    from ckptAction import ckptAction
+    from ckptAction import ckptAction    #custom exception
 
-    print(f'------------------------------------------------')
-    print(f'%RETRY: {taskRecord["try_time_returned"]} - task {taskRecord["id"]}[retry {taskRecord["try_id"]}] {taskRecord["func_name"]}, executor {taskRecord["executor"]}, #fails/failcost={taskRecord["fail_count"]}/{taskRecord["fail_cost"]}\n        exception = {exception}')
-
-    print(f'------------------------------------------------')
-#    print(f'dir(taskRecord): {dir(taskRecord)}')
-#    print(f'dir(taskRecord.values) = {dir(taskRecord.values)}')
-#    print(f'dir(exception): {dir(exception)}')
-#    print(f'exception.args = {exception.args}')
-    for item in taskRecord:
-        #print(f'\ttaskRecord[{item}] = {taskRecord[item]}')
-        pass
-    #print(f'------------------------------------------------')
-    # for item in exception:
-    #     print(f'\texception[{item}] = {exception[item]}')
-    #     pass
-    
-    ## return value is "retries" increment; 0 => retry forever
-    if isinstance(exception,WorkQueueTaskFailure):   # batch job time-out
+    ## return value is "retries" increment or "cost"; 0 => retry forever
+    if isinstance(exception,WorkQueueTaskFailure):   # batch job time-out or worker lost
         cost = 0.3
-        print(f'%[{taskRecord["func_name"]}] WorkQueueTaskFailure: cost={cost}, status={exception.status}, reason={exception.reason}')
+        # print(f'%RETRY: [{taskRecord["func_name"]}] WorkQueueTaskFailure: cost={cost}, '
+        #       f'status={exception.status}, reason={exception.reason}')
 
     elif isinstance(exception,ckptAction):  # custom exception
-        cost=0.77
-        print(f'%[{taskRecord["func_name"]}] ckptAction: cost={cost}, severity={exception.severity}, reason={exception.reason}')
+        cost = 0.77
+        # print(f'%RETRY: [{taskRecord["func_name"]}] ckptAction: cost={cost}, '
+        #       f'severity={exception.severity}, reason={exception.reason}')
 
     elif isinstance(exception,BashExitFailure):   # bash_app script returned non-zero RC
-        cost=0.001
-        print(f'%[{taskRecord["func_name"]}] BashExitFailure: cost={cost}, rc={exception.exitcode}, reason={exception.reason}')
+        cost = 0.001
+        rc = int(exception.exitcode)
+        app = taskRecord['func_name']
+        if rc==126 or rc==127:   # command not founds or not executable
+            cost = 100
+        elif app=='random_bash1' and rc==76: # special handling for this rc (app specific)
+            cost = 200
+            pass
+        # print(f'%RETRY: [{app}] BashExitFailure: cost={cost}, '
+        #       f'rc={rc}, reason={exception.reason}')
     else:
         cost=1
-        print(f'%[{taskRecord["func_name"]}] {exception}: cost={cost}')
+        #print(f'%RETRY: [{taskRecord["func_name"]}] {exception}: cost={cost}')
         pass
-    print(f'================================================\n')
+
+    print(f'%RETRY: '
+          f'{str(taskRecord["try_time_returned"])[:-7]} - '
+          f'Exception= {sys.exc_info()[0].__name__}{exception.args}'
+    )
+    print(f'%RETRY: '
+          f'taskID {taskRecord["id"]}: '
+          f'{taskRecord["func_name"]} '
+          f'[retry {taskRecord["try_id"]}] '
+          f'executor {taskRecord["executor"]}, '
+          f'incoming #fails/failcost={taskRecord["fail_count"]}/{taskRecord["fail_cost"]}'
+    )
+    print(f'%RETRY: cost of this exception = {cost}')
+    print(f'=======================================================================')
     return cost
     
 
@@ -107,10 +125,11 @@ config = Config(
                     max_threads=2
                     ),
         WorkQueueExecutor(
-            label='WQtest',
+            label='WQxtr',
             port=9000,
             shared_fs=True,
             max_retries=1,               ## 1 => let Parsl handle retries
+            worker_executable=os.path.join(thisDir,'wqWrap.bash'),
             provider=SlurmProvider(
                "None",                   ## cori queue/partition/qos
                nodes_per_block=1,        ## nodes per batch job
@@ -122,7 +141,7 @@ config = Config(
                scheduler_options="""#SBATCH --constraint=knl\n#SBATCH --qos=debug""",  ## cori queue
                launcher=SrunLauncher(overrides='-K0 -k --slurmd-debug=error'), # srun opts
                cmd_timeout=300,          ## timeout (sec) for slurm commands (NERSC can be slow)
-               walltime="00:02:00",
+               walltime="00:01:00",      ## SLURM batch job time
                worker_init=worker_init
             ))
         # HighThroughputExecutor(
@@ -149,7 +168,7 @@ config = Config(
 ###    directly under Parsl control
 ####################################################################################
 
-@python_app(executors=['WQ2'],
+@python_app(executors=['WQxtr'],
             cache=True,
             ignore_for_cache=["stdout", "stderr", "parsl_resource_specification"])
 def random_py(i, stdout=None, stderr=None, parsl_resource_specification={}):
@@ -163,7 +182,7 @@ def random_py(i, stdout=None, stderr=None, parsl_resource_specification={}):
    foo="Some random1 returned stuff"
    return foo
 
-@bash_app(executors=['WQ2'],
+@bash_app(executors=['WQxtr'],
           cache=True,
           ignore_for_cache=["stdout", "stderr", "parsl_resource_specification"])
 def random_bash1(i, stdout=None, stderr=None, parsl_resource_specification={}):
@@ -174,12 +193,12 @@ def random_bash1(i, stdout=None, stderr=None, parsl_resource_specification={}):
    st = (rn*i+1)*10.
    print(f'random_bash1: i={i},rn={rn},st={st}')
    time.sleep(st)
-   if rn > 0.2: j=2./0.
+   if rn > 0.8: j=2./0.
    #else:  sys.exit(99)
    return '/global/homes/d/descdm/tomTest/parslStuff/testApp1.bash'
    
 
-@bash_app(executors=['WQ2'],
+@bash_app(executors=['WQxtr'],
           cache=True,
           ignore_for_cache=["stdout", "stderr", "parsl_resource_specification"])
 def random_bash2(i, stdout=None, stderr=None, parsl_resource_specification={}):
@@ -191,7 +210,7 @@ def random_bash2(i, stdout=None, stderr=None, parsl_resource_specification={}):
    st = 10.+(rn*i+1)*10.
    print(f'random_bash2: i={i},rn={rn},st={st}')
    time.sleep(st)
-   if rn > 0.2: raise ckptAction("Gotterdammerung",st)
+   if rn > 0.8: raise ckptAction("Gotterdammerung",st)
    #if rn > 0.2: j=2./0.
    #if rn > 0.9: sys.exit(93)
    return f'echo {st}'
@@ -233,7 +252,7 @@ def many2(loops):
 
 
 ####################################################################################
-###   MAIN WORKFLOW SCRIPT
+###   TOP-LEVEL WORKFLOW SCRIPT
 ####################################################################################
 
 

@@ -3,7 +3,7 @@
 ##
 ##   Add the SLURM-specific "TimeLeft" as option to work_queue_worker
 ##
-
+echo `date` "Entering wqWrap"
 dhms2s () {
     ## This function processes the [[[dd-]hh:]mm:]ss provided by slurm and
     ## converts to decimal seconds
@@ -93,10 +93,15 @@ else
 
     
     ## How much time to allow workQueue to use?
-    ##   Initially, reserve one minute
-    limit=$(( ${seconds}-60 ))
-    echo "Wall time limit = ${limit}"
+    ##
+    fuzz=10   # amount of time to reserve at the end of job (seconds)
+    limit=$(( ${seconds}-${fuzz} ))
+    echo "Wall time limit = ${seconds}(timeLeft)-${fuzz}(fuzz)=${limit} seconds"
 
     ## Start the worker
-    echo work_queue_worker $@ --wall-time=${limit}
+    startWorkerCmd="work_queue_worker $@ --wall-time=${limit}"
+    echo $startWorkerCmd
+    eval $startWorkerCmd
 fi
+
+echo `date` "Exiting wqWrap"

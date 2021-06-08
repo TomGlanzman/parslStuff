@@ -1,5 +1,10 @@
 *~
 *.db
+runinfo
+cmd*
+
+
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

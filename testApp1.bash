@@ -8,7 +8,7 @@ foo=$(((RANDOM % 100) +1 ))
 echo "foo = $foo"
 
 ## Then exit using different return codes
-if [ $foo -ge 50 ]; then
+if [ $foo -ge 60 ]; then
     exit 76
 else
     exit 0
