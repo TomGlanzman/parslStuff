@@ -104,4 +104,4 @@ else
     eval $startWorkerCmd
 fi
 
-echo `date` "Exiting wqWrap"
+echo `date` "Exiting wqWrap, duration=${SECONDS} seconds"

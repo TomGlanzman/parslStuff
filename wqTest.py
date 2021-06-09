@@ -45,36 +45,10 @@ thisDir = os.getcwd()
 
 def myRetryHandler(exception, taskRecord):
     # import the specific python exceptions of interest
+    #import parsl # for the 'cleanup()' function
     from parsl.executors.workqueue.errors import WorkQueueTaskFailure
     from parsl.app.errors import BashExitFailure
     from ckptAction import ckptAction    #custom exception
-
-    ## return value is "retries" increment or "cost"; 0 => retry forever
-    if isinstance(exception,WorkQueueTaskFailure):   # batch job time-out or worker lost
-        cost = 0.3
-        # print(f'%RETRY: [{taskRecord["func_name"]}] WorkQueueTaskFailure: cost={cost}, '
-        #       f'status={exception.status}, reason={exception.reason}')
-
-    elif isinstance(exception,ckptAction):  # custom exception
-        cost = 0.77
-        # print(f'%RETRY: [{taskRecord["func_name"]}] ckptAction: cost={cost}, '
-        #       f'severity={exception.severity}, reason={exception.reason}')
-
-    elif isinstance(exception,BashExitFailure):   # bash_app script returned non-zero RC
-        cost = 0.001
-        rc = int(exception.exitcode)
-        app = taskRecord['func_name']
-        if rc==126 or rc==127:   # command not founds or not executable
-            cost = 100
-        elif app=='random_bash1' and rc==76: # special handling for this rc (app specific)
-            cost = 200
-            pass
-        # print(f'%RETRY: [{app}] BashExitFailure: cost={cost}, '
-        #       f'rc={rc}, reason={exception.reason}')
-    else:
-        cost=1
-        #print(f'%RETRY: [{taskRecord["func_name"]}] {exception}: cost={cost}')
-        pass
 
     print(f'%RETRY: '
           f'{str(taskRecord["try_time_returned"])[:-7]} - '
@@ -87,6 +61,37 @@ def myRetryHandler(exception, taskRecord):
           f'executor {taskRecord["executor"]}, '
           f'incoming #fails/failcost={taskRecord["fail_count"]}/{taskRecord["fail_cost"]}'
     )
+
+    ## return value is "retries" increment or "cost"; 0 => retry forever
+    if isinstance(exception,WorkQueueTaskFailure):   # batch job time-out or worker lost
+        cost = 0.3
+    elif isinstance(exception,ckptAction):  # custom exception
+        cost = 0.77
+    elif isinstance(exception,BashExitFailure):   # bash_app script returned non-zero RC
+        cost = 0.001
+        rc = int(exception.exitcode)
+        app = taskRecord['func_name']
+        if rc==126 or rc==127:   # command not founds or not executable
+            cost = 100
+        elif app=='random_bash1' and rc==76: # special handling for this rc (app specific)
+            cost = 200
+            print(f'rc=76  --  Abandon ship!')
+            #sys.exit(200)      ## Kill the entire workflow [THIS DOES NOT WORK!]
+            #parsl.cleanup()    ## Has no obvious effect
+            # this is horrifying.
+            import threading
+            import ctypes
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_long(threading.main_thread().ident),
+                ctypes.py_object(RuntimeError)
+            )
+            print("In exiting_retry_handler - passed internal block")
+            return 100
+            pass
+    else:
+        cost=1
+        pass
+
     print(f'%RETRY: cost of this exception = {cost}')
     print(f'=======================================================================')
     return cost
@@ -114,7 +119,7 @@ print(f'worker_init = \n{worker_init}')
 config = Config(
     strategy='simple',                       # are there other choices?
     garbage_collect=False,                   # False = keep task records in dfk().tasks
-    app_cache=True,                          # needed for task_hashsum generation
+    app_cache=True,                          # needed to enable task_hashsum generation
     checkpoint_mode='task_exit',             # produce checkpointing data for this run
     checkpoint_files=get_all_checkpoints(),  # process all previous checkpointing data
     retries=5,                               # in addition to original attempt
@@ -141,7 +146,7 @@ config = Config(
                scheduler_options="""#SBATCH --constraint=knl\n#SBATCH --qos=debug""",  ## cori queue
                launcher=SrunLauncher(overrides='-K0 -k --slurmd-debug=error'), # srun opts
                cmd_timeout=300,          ## timeout (sec) for slurm commands (NERSC can be slow)
-               walltime="00:01:00",      ## SLURM batch job time
+               walltime="00:03:00",      ## SLURM batch job time
                worker_init=worker_init
             ))
         # HighThroughputExecutor(
@@ -193,7 +198,7 @@ def random_bash1(i, stdout=None, stderr=None, parsl_resource_specification={}):
    st = (rn*i+1)*10.
    print(f'random_bash1: i={i},rn={rn},st={st}')
    time.sleep(st)
-   if rn > 0.8: j=2./0.
+   if rn > 0.6: j=2./0.
    #else:  sys.exit(99)
    return '/global/homes/d/descdm/tomTest/parslStuff/testApp1.bash'
    
