@@ -29,6 +29,17 @@ import concurrent.futures
 #from typing           import  Callable, List, Optional
 from tabulate         import  tabulate
 import code
+import logging
+
+
+####################################################################################
+##  SETUP AND INITIALIZATION
+####################################################################################
+
+# Establish logging
+logger = logging.getLogger("parsl.wqTest")
+parsl.set_stream_logger(level=logging.INFO)
+logger.info(f'Starting out...')
 
 
 ####################################################################################
@@ -50,11 +61,14 @@ def myRetryHandler(exception, taskRecord):
     from parsl.app.errors import BashExitFailure
     from ckptAction import ckptAction    #custom exception
 
-    print(f'%RETRY: '
+    import logging
+    logger = logging.getLogger("parsl.wqTest")
+
+    logger.info(f'%RETRY: '
           f'{str(taskRecord["try_time_returned"])[:-7]} - '
           f'Exception= {sys.exc_info()[0].__name__}{exception.args}'
     )
-    print(f'%RETRY: '
+    logger.info(f'%RETRY: '
           f'taskID {taskRecord["id"]}: '
           f'{taskRecord["func_name"]} '
           f'[retry {taskRecord["try_id"]}] '
@@ -75,25 +89,25 @@ def myRetryHandler(exception, taskRecord):
             cost = 100
         elif app=='random_bash1' and rc==76: # special handling for this rc (app specific)
             cost = 200
-            print(f'rc=76  --  Abandon ship!')
+            #logger.info(f'rc=76  --  Abandon ship!')
             #sys.exit(200)      ## Kill the entire workflow [THIS DOES NOT WORK!]
             #parsl.cleanup()    ## Has no obvious effect
-            # this is horrifying.
-            import threading
-            import ctypes
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                ctypes.c_long(threading.main_thread().ident),
-                ctypes.py_object(RuntimeError)
-            )
-            print("In exiting_retry_handler - passed internal block")
-            return 100
+            # # this is horrifying.
+            # import threading
+            # import ctypes
+            # ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            #     ctypes.c_long(threading.main_thread().ident),
+            #     ctypes.py_object(RuntimeError)
+            # )
+            # logger.info("In exiting_retry_handler - passed internal block")
+            # return 100
             pass
     else:
         cost=1
         pass
 
-    print(f'%RETRY: cost of this exception = {cost}')
-    print(f'=======================================================================')
+    logger.info(f'%RETRY: cost of this exception = {cost}')
+    logger.info(f'=======================================================================')
     return cost
     
 
@@ -113,7 +127,7 @@ worker_init = (f'echo "Starting batch job on "`date`\n'
                f'cd {workflow_cwd}\n'
                f'source setupWQ\n'
                )
-print(f'worker_init = \n{worker_init}')
+logger.info(f'worker_init = \n{worker_init}')
 
 
 config = Config(
@@ -178,11 +192,14 @@ config = Config(
             ignore_for_cache=["stdout", "stderr", "parsl_resource_specification"])
 def random_py(i, stdout=None, stderr=None, parsl_resource_specification={}):
    import random,time
+   import logging
+   logger = logging.getLogger("parsl.random_py")
+   
    rn = random.random()
    #if rn > 0.9: j=2./0.
    #else:  sys.exit(99)
    st = (rn*i+1)*60.
-   print(f'random_py: i={i},rn={rn},st={st}')
+   logger.info(f'random_py: i={i},rn={rn},st={st}')
    time.sleep(st)
    foo="Some random1 returned stuff"
    return foo
@@ -192,11 +209,13 @@ def random_py(i, stdout=None, stderr=None, parsl_resource_specification={}):
           ignore_for_cache=["stdout", "stderr", "parsl_resource_specification"])
 def random_bash1(i, stdout=None, stderr=None, parsl_resource_specification={}):
    import random,time,sys,os
-   print('random_bash1: entering app...')
-   #sys.exit(91)
+   import logging
+   logger = logging.getLogger("parsl.random_bash1")
+   logger.info('random_bash1: entering app...')
+
    rn = random.random()
-   st = (rn*i+1)*10.
-   print(f'random_bash1: i={i},rn={rn},st={st}')
+   st = 20.+(rn*i+1)*10.
+   logger.info(f'random_bash1: i={i},rn={rn},st={st}')
    time.sleep(st)
    if rn > 0.6: j=2./0.
    #else:  sys.exit(99)
@@ -209,11 +228,14 @@ def random_bash1(i, stdout=None, stderr=None, parsl_resource_specification={}):
 def random_bash2(i, stdout=None, stderr=None, parsl_resource_specification={}):
    import random,time,sys,os
    from ckptAction import ckptAction
-   #sys.exit(92)
-   print('random_bash2: entering app...')
+   import logging
+
+   logger = logging.getLogger("parsl.random_bash2")
+
+   logger.info('random_bash2: entering app...')
    rn = random.random()
-   st = 10.+(rn*i+1)*10.
-   print(f'random_bash2: i={i},rn={rn},st={st}')
+   st = 30.+(rn*i+1)*10.
+   logger.info(f'random_bash2: i={i},rn={rn},st={st}')
    time.sleep(st)
    if rn > 0.8: raise ckptAction("Gotterdammerung",st)
    #if rn > 0.2: j=2./0.
@@ -225,16 +247,16 @@ def random_bash2(i, stdout=None, stderr=None, parsl_resource_specification={}):
 def many1(loops):
    ## Submit Parsl apps for execution
    myFutures1 = []
-   print(f'many1 preparing for {loops} loops.')
+   logger.info(f'many1 preparing for {loops} loops.')
    for i in range(0,loops):
-      print(f'many1: Starting many loop {i}')
+      logger.info(f'many1: Starting many loop {i}')
       x = random_bash1(i,
                       stdout=f'{logdir}/random1_{i}.stdout',
                       stderr=f'{logdir}/random1_{i}.stderr',
                       parsl_resource_specification={'cores':2, 'memory':2000, 'disk':0, 'running_time_min':60})
       myFutures1.append(x)
       pass
-   print(f'many1: About to return...')
+   logger.info(f'many1: About to return...')
    return myFutures1
 
 
@@ -242,16 +264,16 @@ def many1(loops):
 def many2(loops):
    ## Submit Parsl apps for execution
    myFutures2 = []
-   print(f'many2 preparing for {loops} loops.')
+   logger.info(f'many2 preparing for {loops} loops.')
    for i in range(0,loops):
-      print(f'many2: Starting many loop {i}')
+      logger.info(f'many2: Starting many loop {i}')
       x = random_bash2(i,
                       stdout=f'{logdir}/random2_{i}.stdout',
                       stderr=f'{logdir}/random2_{i}.stderr',
                       parsl_resource_specification={'cores':1, 'memory':2000, 'disk':0, 'running_time_min':60})
       myFutures2.append(x)
       pass
-   print(f'many2: About to return...')
+   logger.info(f'many2: About to return...')
    return myFutures2
 
 
@@ -263,34 +285,43 @@ def many2(loops):
 
 ## Start Parsl
 parsl.load(config)
-#print("Contents of the Parsl Config():\n",Config)
+#logger.info("Contents of the Parsl Config():\n",Config)
 
 ## Organize app logs by run in the Parsl runinfo tree
 logdir = parsl.dfk().run_dir + "/appLogs/"
 if not os.path.isdir(logdir):
-   print(f'creating {logdir}')
+   logger.info(f'creating {logdir}')
    os.mkdir(logdir)
-print(f'logdir = {logdir}')
+logger.info(f'logdir = {logdir}')
 
 ## Submit Parsl apps for execution
 myFutures = []
 
-fut = many1(5)
+fut = many1(10)
 myFutures.append(fut)
 
-fut = many2(5)
+fut = many2(10)
 myFutures.append(fut)
 
 ## Wait for apps to finish
-print('main: waiting for myFutures to complete...')
-foo = concurrent.futures.wait(myFutures)
+logger.info('main: waiting for myFutures to complete...')
 sys.stdout.flush()
-print('main: myFutures complete!')
+n=0
+##   Forcing a timeout in the 'wait' allows any exceptions to leak through.
+while True:
+    n += 1
+    (fdone,fundone) = concurrent.futures.wait(myFutures, timeout=10)
+    logger.info(f'concurrent.futures.wait return {n}, len(fdone)={len(fdone)}, len(fundone)={len(fundone)}')
+    parsl.dfk().log_task_states()   # Few-line summary of all defined Parsl tasks
+    if len(fundone) == 0: break
+    pass
+
+logger.info('main: myFutures complete!')
 
 # print out summary table of all tasks for this run
 # (based on the content of the Parsl task list; note
 #  that garbage_collection must be disabled for this to work)
-print('main: print out parsl.dfk().tasks')
+logger.info('main: print out parsl.dfk().tasks')
 tasks = parsl.dfk().tasks
 
 ## Drop into interactive mode
@@ -317,7 +348,7 @@ for taskNum in tasks:
 
 titles = ['taskID','status','function','args','kwargs','result','exception']
 tblfmt='psql'
-print(f'main: Task list (with {len(tasks)} entries):')
+logger.info(f'main: Task list (with {len(tasks)} entries):')
 print('\n'+tabulate(rw,headers=titles,tablefmt=tblfmt))
-print("main: END")
+logger.info("main: END")
 
