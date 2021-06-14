@@ -2,7 +2,8 @@
 *.db
 runinfo
 cmd*
-
+*.jpg
+*.png
 
 
 
