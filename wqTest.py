@@ -64,6 +64,7 @@ def myRetryHandler(exception, taskRecord):
     import logging
     logger = logging.getLogger("parsl.wqTest")
 
+    logger.info(f'v==========v==========v==========v==========v==========v==========v==========v==========v')
     logger.info(f'%RETRY: '
           f'{str(taskRecord["try_time_returned"])[:-7]} - '
           f'Exception= {sys.exc_info()[0].__name__}{exception.args}'
@@ -107,7 +108,7 @@ def myRetryHandler(exception, taskRecord):
         pass
 
     logger.info(f'%RETRY: cost of this exception = {cost}')
-    logger.info(f'=======================================================================')
+    logger.info(f'^==========^==========^==========^==========^==========^==========^==========^==========^')
     return cost
     
 

@@ -7,9 +7,17 @@ updateparsl="pip install 'parsl[monitoring,workqueue] @ git+https://github.com/p
 echo $updateparsl
 eval $updateparsl
 ##
-## And the following is needed to update the workQueue code (part of ndcctools)
-echo "Updating workQueue..."
-updatewq="conda install -c conda-forge ndcctools"
-echo $updatewq
-eval $updatewq
+
+
+echo -n "Update workQueue? (<return>=yes) "
+read response
+
+if [ "$response" == "" ]; then
+    ## And the following is needed to update the workQueue code (part of ndcctools)
+    echo "Updating workQueue..."
+    updatewq="conda install -c conda-forge ndcctools"
+    echo $updatewq
+    eval $updatewq
+fi
+
 echo Done.
