@@ -95,6 +95,7 @@ else
     ## How much time to allow workQueue to use?
     ##
     fuzz=10   # amount of time to reserve at the end of job (seconds)
+    #  A larger amount of fuzz could be used, e.g., to allow for checkpointing
     limit=$(( ${seconds}-${fuzz} ))
     echo "Wall time limit = ${seconds}(timeLeft)-${fuzz}(fuzz)=${limit} seconds"
 
