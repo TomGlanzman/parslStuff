@@ -61,7 +61,7 @@ dhms2s () {
 if [[ -z $SLURM_JOB_ID ]]
 then
     echo NON-BATCH
-    echo work_queue_worker $@
+    startWorkerCmd="work_queue_worker $@ "
 else
     echo SLURM JobID = ${SLURM_JOB_ID}
     ## determine time left in this job (in seconds)
@@ -101,8 +101,9 @@ else
 
     ## Start the worker
     startWorkerCmd="work_queue_worker $@ --wall-time=${limit}"
-    echo $startWorkerCmd
-    eval $startWorkerCmd
 fi
+
+echo $startWorkerCmd
+eval $startWorkerCmd
 
 echo `date` "Exiting wqWrap, duration=${SECONDS} seconds"

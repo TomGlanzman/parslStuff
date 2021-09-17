@@ -1,6 +1,8 @@
 # wqTest.py - a simple test of parsl's new workqueue executor
 #             This test uses SLURM batch to execute apps
 
+# This is a "top-level Parsl script"
+
 
 ####################################################################################
 ###  MODULES
@@ -50,9 +52,34 @@ thisDir = os.getcwd()
 
 
 ####################################################################################
-###  RETRY HANDLER
+###  SIGNAL HANDLER (SIGUSR1)
 ####################################################################################
 
+import signal
+import datetime
+# Define signal handling
+def sigHandler(signum, frame):
+    ## Signal handler
+    logger = logging.getLogger("parsl.wqTest.sigHandler")
+
+    logger.info(f'Received signal {signum} ({signal.strsignal(signum)})')
+    sys.tracebacklimit=0    # disable sending traceback to stderr
+    if signum == 10:
+        logger.info(f'SIGUSR1:  User shutdown requested.')
+        sys.stdout.flush()
+        sys.exit()
+    else:
+        logger.info(f'Signal ignored.  Continuing...')
+        return
+        pass
+
+# Declare signal handler
+signal.signal(signal.SIGUSR1, sigHandler)
+
+
+####################################################################################
+###  RETRY HANDLER
+####################################################################################
 
 def myRetryHandler(exception, taskRecord):
     # import the specific python exceptions of interest
@@ -62,7 +89,7 @@ def myRetryHandler(exception, taskRecord):
     from ckptAction import ckptAction    #custom exception
 
     import logging
-    logger = logging.getLogger("parsl.wqTest")
+    logger = logging.getLogger("parsl.wqTest.myRetryHandler")
 
     logger.info(f'v==========v==========v==========v==========v==========v==========v==========v==========v')
     logger.info(f'%RETRY: '
@@ -137,7 +164,7 @@ config = Config(
     app_cache=True,                          # needed to enable task_hashsum generation
     checkpoint_mode='task_exit',             # produce checkpointing data for this run
     checkpoint_files=get_all_checkpoints(),  # process all previous checkpointing data
-    retries=5,                               # in addition to original attempt
+    retries=2,                               # in addition to original attempt
     retry_handler=myRetryHandler,            # determine failure cause and adjust #retries accordingly
     executors=[
         ThreadPoolExecutor(
@@ -150,19 +177,24 @@ config = Config(
             shared_fs=True,
             max_retries=1,               ## 1 => let Parsl handle retries
             worker_executable=os.path.join(thisDir,'wqWrap.bash'),
-            provider=SlurmProvider(
-               "None",                   ## cori queue/partition/qos
-               nodes_per_block=1,        ## nodes per batch job
-               exclusive=True,
-               init_blocks=0,            ## blocks (batch jobs) to start with (on spec)
-               min_blocks=0,
-               max_blocks=1,             ## max # of batch jobs
-               parallelism=0,            ## >0 causes multiple batch jobs, even for simple WFs
-               scheduler_options="""#SBATCH --constraint=knl\n#SBATCH --qos=debug""",  ## cori queue
-               launcher=SrunLauncher(overrides='-K0 -k --slurmd-debug=error'), # srun opts
-               cmd_timeout=300,          ## timeout (sec) for slurm commands (NERSC can be slow)
-               walltime="00:03:00",      ## SLURM batch job time
-               worker_init=worker_init
+            provider=LocalProvider(
+                init_blocks=0,
+                min_blocks=0,
+                max_blocks=1,
+                worker_init=worker_init
+            # provider=SlurmProvider(
+            #    "None",                   ## cori queue/partition/qos
+            #    nodes_per_block=1,        ## nodes per batch job
+            #    exclusive=True,
+            #    init_blocks=0,            ## blocks (batch jobs) to start with (on spec)
+            #    min_blocks=0,
+            #    max_blocks=1,             ## max # of batch jobs
+            #    parallelism=0,            ## >0 causes multiple batch jobs, even for simple WFs
+            #    scheduler_options="""#SBATCH --constraint=knl\n#SBATCH --qos=debug""",  ## cori queue
+            #    launcher=SrunLauncher(overrides='-K0 -k --slurmd-debug=error'), # srun opts
+            #    cmd_timeout=300,          ## timeout (sec) for slurm commands (NERSC can be slow)
+            #    walltime="00:03:00",      ## SLURM batch job time
+            #    worker_init=worker_init
             ))
         # HighThroughputExecutor(
         #     label='HTEX1',
@@ -215,10 +247,10 @@ def random_bash1(i, stdout=None, stderr=None, parsl_resource_specification={}):
    logger.info('random_bash1: entering app...')
 
    rn = random.random()
-   st = 20.+(rn*i+1)*10.
+   st = 40.+(rn*i+1)*10.
    logger.info(f'random_bash1: i={i},rn={rn},st={st}')
    time.sleep(st)
-   if rn > 0.6: j=2./0.
+   if rn > 0.4: j=2./0.
    #else:  sys.exit(99)
    return '/global/homes/d/descdm/tomTest/parslStuff/testApp1.bash'
    
@@ -235,10 +267,10 @@ def random_bash2(i, stdout=None, stderr=None, parsl_resource_specification={}):
 
    logger.info('random_bash2: entering app...')
    rn = random.random()
-   st = 30.+(rn*i+1)*10.
+   st = 50.+(rn*i+1)*10.
    logger.info(f'random_bash2: i={i},rn={rn},st={st}')
    time.sleep(st)
-   if rn > 0.8: raise ckptAction("Gotterdammerung",st)
+   if rn > 0.5: raise ckptAction("Gotterdammerung",st)
    #if rn > 0.2: j=2./0.
    #if rn > 0.9: sys.exit(93)
    return f'echo {st}'
@@ -298,10 +330,10 @@ logger.info(f'logdir = {logdir}')
 ## Submit Parsl apps for execution
 myFutures = []
 
-fut = many1(10)
+fut = many1(3)
 myFutures.append(fut)
 
-fut = many2(10)
+fut = many2(3)
 myFutures.append(fut)
 
 ## Wait for apps to finish
